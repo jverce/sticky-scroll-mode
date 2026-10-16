@@ -9,37 +9,25 @@ If you'd prefer not to have a live sticky scroll window, and would rather have a
 ![sticky-mode-scroll](https://github.com/user-attachments/assets/43bf0c34-e7e5-4c64-b35d-6dc7eed98eab)
 
 ## Installation
-You can install with MELPA
 
-### Melpa setup
+Install this fork using Emacs 30's built-in `use-package` VC support:
 
-``` emacs-lisp
-(require 'package)
-(add-to-list 'package-archives '("melpa" . "https://melpa.org/packages/") t)
-```
-
-### Sticky scroll
-
-``` emacs-lisp
-(require 'sticky-scroll-mode)
-```
-
-### use-package
-
-``` emacs-lisp
+```emacs-lisp
 (use-package sticky-scroll-mode
-  :ensure t
-  ;; example hook
-  :hook
-  (prog-mode . sticky-scroll-mode))
+  :vc (:url "https://github.com/jverce/sticky-scroll-mode.git"
+       :branch "main" :rev :newest)
+  :hook (prog-mode . sticky-scroll-mode)
+  :custom (sticky-scroll-max-window-height 3))
 ```
 
 ## Usage
 
 ### Sticky scroll window
 
-The package exposes the `sticky-scroll--max-window-height` which can be thought of as "the max number of outer contexts shown". If
-the sticky scroll buffer has more lines than `sticky-scroll--max-window-height`, only the last `sticky-scroll--max-window-height` are shown.
+Source header lines, including LSP breadcrumbs, appear above the sticky context.
+
+The package exposes the `sticky-scroll-max-window-height` which can be thought of as "the max number of outer contexts shown". If
+the sticky scroll buffer has more lines than `sticky-scroll-max-window-height`, only the last `sticky-scroll-max-window-height` are shown.
 Otherwise, the sticky window shows all lines.
 
 #### Example
@@ -49,7 +37,7 @@ A {
   B {
     C {
 ```
-with a `sticky-scroll--max-window-height` of 2 will show:
+with a `sticky-scroll-max-window-height` of 2 will show:
 
 ```
   B {
@@ -60,7 +48,7 @@ with a `sticky-scroll--max-window-height` of 2 will show:
 
 Pop up the sticky window until you do another command (moving, typing, etc.)
 
-Compatible with `C-u N`, it will invoke the window as if `sticky-scroll--max-window-height` is set to `N`.
+Compatible with `C-u N`, it will invoke the window as if `sticky-scroll-max-window-height` is set to `N`.
 
 
 ## Approach 
@@ -68,3 +56,12 @@ Compatible with `C-u N`, it will invoke the window as if `sticky-scroll--max-win
 Uses an indentation approach, to find offscreen lines that are levels of indentation lower than the current point.
 
 This works surprising well and quickly.
+
+
+## Tests
+
+Run the regression tests without installing any packages:
+
+```sh
+emacs -Q --batch -L . -l test/sticky-scroll-mode-test.el -f ert-run-tests-batch-and-exit
+```

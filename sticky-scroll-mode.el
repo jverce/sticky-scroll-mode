@@ -18,9 +18,9 @@
 ;; Maintainer: Jon Lasley <jon.lasley+sticky@gmail.com>
 ;; Created: August 09, 2024
 ;; Modified: August 13, 2024
-;; Version: 0.3.1
+;; Version: 0.3.2
 ;; Keywords:  convenience extensions tools
-;; Homepage: https://github.com/jclasley/sticky-mode
+;; Homepage: https://github.com/jverce/sticky-scroll-mode
 ;; Package-Requires: ((emacs "29.4"))
 ;;
 ;; This file is not part of GNU Emacs.
@@ -137,8 +137,12 @@ Have to keep going until we hit content or the end of the buffer."
 
 (defun sticky-scroll--window (content)
   "Create the sticky scroll window, displaying CONTENT."
+  (setq content (last content sticky-scroll-max-window-height))
   (let ((buf (sticky-scroll--buffer-for-buffer))
-        (height (min (length content) sticky-scroll-max-window-height)))
+        (height (length content))
+        (source-window (selected-window))
+        (source-header header-line-format)
+        (window-min-height 1))
     (if (not content)
         ;; kill it if it's empty
         (sticky-scroll-close-buffer)
@@ -153,22 +157,21 @@ Have to keep going until we hit content or the end of the buffer."
                                     (no-delete-other-window . t))))))
       (with-current-buffer buf
         (setq-local mode-line-format nil
+                    header-line-format
+                    (when source-header
+                      `(:eval (format-mode-line ',source-header nil ,source-window
+                                                (window-buffer ,source-window))))
                     line-spacing 1)
         (erase-buffer)
         (let ((inhibit-message t))
           (dolist (str content)
             (insert str)
             (insert ?\n))))
-      (save-excursion
-        (let ((w (get-buffer-window (current-buffer))))
-          (select-window (get-buffer-window buf))
-          (if (< height (length content))
-              (progn
-                ;; TODO: why not moving forward
-                (goto-char (point-min))
-                (forward-line (- (length content) height)))
-            (goto-char (point-min)))
-          (select-window w))))))
+      (when source-header
+        (set-window-parameter source-window 'header-line-format 'none))
+      (with-selected-window (get-buffer-window buf)
+        (goto-char (point-min))
+        (window-resize (selected-window) (- height (window-body-height)))))))
 
 (defun sticky-scroll--collect-lines (&optional point start-indent content seen-levels)
   "Move backwards through the buffer, line by line, gathering contexts.
@@ -177,37 +180,31 @@ that is less than START-INDENT, the identation level at
 the starting POINT. CONTENT is the list of string content found on
 those lines. Only find at most one item at each indentation level."
   (save-excursion
-    ;; if the line is blank and surrounding by indentation, skip it
-    (when (and
-           (eq (current-indentation) 0)
-           (sticky-scroll--not-actually-empty (point)))
-      (forward-line -1)
-      (sticky-scroll--collect-lines (line-beginning-position)))
-
     (goto-char (or point (point)))
-    (let ((indent (current-indentation))
-          (start-indent (or start-indent (current-indentation))))
-      (if (and (eq (car seen-levels) 0)
-               (not (eq (char-after (point)) ?\n)))
-          content
-        (forward-line -1)
-        (let ((prev-indent (current-indentation))
-              (content content)
-              (empty (eq (char-after (point)) ?\n)))
-          (when (and
-                 (> indent prev-indent)
-                 (< prev-indent start-indent)
-                 (not (memq prev-indent seen-levels))
-                 (not empty)
-                 ;; only add the content if it's off screen
-                 (< (point) (window-start)))
-            (setq content (cons
-                           (buffer-substring (line-beginning-position) (line-end-position))
-                           content)))
-          (unless empty
-            (setq seen-levels (cons prev-indent seen-levels)))
-          (sticky-scroll--collect-lines (line-beginning-position) start-indent
-                                        content seen-levels))))))
+    (beginning-of-line)
+    (skip-chars-forward " \t\r\n")
+    (let ((start-indent (or start-indent (current-indentation))))
+      (while (and (not (eobp)) (> (line-beginning-position) (point-min))
+                  (not (eq (car seen-levels) 0)))
+        (let ((indent (current-indentation)))
+          (forward-line -1)
+          (while (and (not (bobp)) (looking-at-p "[ \t]*$"))
+            (forward-line -1))
+          (let ((prev-indent (current-indentation))
+                (empty (looking-at-p "[ \t]*$")))
+            (when (and
+                   (> indent prev-indent)
+                   (< prev-indent start-indent)
+                   (not (memq prev-indent seen-levels))
+                   (not empty)
+                   ;; only add the content if it's off screen
+                   (< (point) (window-start)))
+              (setq content (cons
+                             (buffer-substring (line-beginning-position) (line-end-position))
+                             content)))
+            (unless empty
+              (setq seen-levels (cons prev-indent seen-levels))))))
+      content)))
 
 (defun sticky-scroll-close-buffer (&optional cell)
   "Close the current buffer's sticky window, or `(cdr CELL)'.
@@ -216,6 +213,8 @@ If not found or already closed, do nothing."
       ;; for the post-command-hook, sometimes the minibuffer is accepting input
       ;; so we need to restore that
       (progn
+        (dolist (window (get-buffer-window-list (car buf-list) nil t))
+          (set-window-parameter window 'header-line-format nil))
         (save-excursion
           ;; kill the buffer and the window
           (setq sticky-scroll--buffer-alist

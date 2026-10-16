@@ -65,6 +65,17 @@ window at the top of the `sticky-scroll-mode' window."
   "The max lines to display in the sticky scroll window."
   :type 'integer)
 
+(defcustom sticky-scroll-separator t
+  "Whether to draw a separator below the sticky headers."
+  :type 'boolean
+  :group 'sticky-scroll)
+
+(defcustom sticky-scroll-separator-padding nil
+  "Number of blank rows above the separator, or nil for none.
+Ignored when `sticky-scroll-separator' is nil."
+  :type '(choice (const :tag "No padding" nil) natnum)
+  :group 'sticky-scroll)
+
 (defvar sticky-scroll--quit nil
   "Used to temporarily hold until the next input in the `post-command-hook'.
 Should not be edited by the user in any way.")
@@ -142,6 +153,12 @@ Have to keep going until we hit content or the end of the buffer."
         (height (length content))
         (source-window (selected-window))
         (source-header header-line-format)
+        (source-margins (window-margins))
+        (source-tab-width tab-width)
+        (padding (if sticky-scroll-separator (or sticky-scroll-separator-padding 0) 0))
+        (gutter-width (+ 2 (or (car (window-margins)) 0)
+                         (max (line-number-display-width)
+                              (length (number-to-string (line-number-at-pos (point-max) t))))))
         (window-min-height 1))
     (if (not content)
         ;; kill it if it's empty
@@ -161,17 +178,40 @@ Have to keep going until we hit content or the end of the buffer."
                     (when source-header
                       `(:eval (format-mode-line ',source-header nil ,source-window
                                                 (window-buffer ,source-window))))
-                    line-spacing 1)
+                    line-spacing 0
+                    tab-width source-tab-width
+                    truncate-lines t
+                    display-line-numbers nil)
+        (remove-overlays)
         (erase-buffer)
         (let ((inhibit-message t))
           (dolist (str content)
-            (insert str)
-            (insert ?\n))))
+            (let ((start (point))
+                  (number (get-text-property 0 'sticky-scroll-line-number str)))
+              (insert str ?\n)
+              (when number
+                (overlay-put
+                 (make-overlay start (1+ start)) 'before-string
+                 (propertize " " 'display
+                             `((margin left-margin)
+                               ,(propertize (string-pad (format "%d " number) gutter-width nil t)
+                                            'face 'line-number))))))))
+        (when sticky-scroll-separator
+          (insert (make-string padding ?\n))
+          (save-excursion
+            (forward-line -1)
+            (add-face-text-property (point) (point-max) '(:underline t) t)
+            (put-text-property (line-end-position) (point-max)
+                               'display '(space :align-to right)))))
       (when source-header
         (set-window-parameter source-window 'header-line-format 'none))
       (with-selected-window (get-buffer-window buf)
+        (set-window-margins nil gutter-width (cdr source-margins))
+        (set-window-hscroll nil (window-hscroll source-window))
         (goto-char (point-min))
-        (window-resize (selected-window) (- height (window-body-height)))))))
+        (window-resize (selected-window)
+                       (- (+ height padding (if source-header 1 0))
+                          (window-total-height)))))))
 
 (defun sticky-scroll--collect-lines (&optional point start-indent content seen-levels)
   "Move backwards through the buffer, line by line, gathering contexts.
@@ -200,7 +240,8 @@ those lines. Only find at most one item at each indentation level."
                    ;; only add the content if it's off screen
                    (< (point) (window-start)))
               (setq content (cons
-                             (buffer-substring (line-beginning-position) (line-end-position))
+                             (propertize (buffer-substring (line-beginning-position) (line-end-position))
+                                         'sticky-scroll-line-number (line-number-at-pos nil t))
                              content)))
             (unless empty
               (setq seen-levels (cons prev-indent seen-levels))))))

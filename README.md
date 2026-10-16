@@ -17,7 +17,10 @@ Install this fork using Emacs 30's built-in `use-package` VC support:
   :vc (:url "https://github.com/jverce/sticky-scroll-mode.git"
        :branch "main" :rev :newest)
   :hook (prog-mode . sticky-scroll-mode)
-  :custom (sticky-scroll-max-window-height 3))
+  :custom
+  (sticky-scroll-max-window-height 3)
+  (sticky-scroll-separator t)
+  (sticky-scroll-separator-padding nil))
 ```
 
 ## Usage
@@ -25,6 +28,14 @@ Install this fork using Emacs 30's built-in `use-package` VC support:
 ### Sticky scroll window
 
 Source header lines, including LSP breadcrumbs, appear above the sticky context.
+Sticky headers retain the source indentation and show their original line numbers
+in a gutter aligned with the source window.
+An underline marks the bottom of the sticky context without adding a separator row.
+
+Set `sticky-scroll-separator` to `nil` to hide the separator.
+`sticky-scroll-separator-padding` adds blank rows above the separator;
+`nil` (the default) or `0` keeps the compact underline. Padding is ignored when
+the separator is disabled and does not count toward the sticky header limit.
 
 The package exposes the `sticky-scroll-max-window-height` which can be thought of as "the max number of outer contexts shown". If
 the sticky scroll buffer has more lines than `sticky-scroll-max-window-height`, only the last `sticky-scroll-max-window-height` are shown.
